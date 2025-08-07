@@ -27,8 +27,16 @@ Simply run the setup script:
 - Installs PyTorch 2.4.1 with CUDA 11.8 support
 - Installs required dependencies:
   - **Conda packages**: torchvision, torchaudio, matplotlib, tensorboard, scipy, opencv
-  - **Pip packages**: yacs, loguru, einops, timm==0.4.12, imageio
+  - **Pip packages**: yacs, loguru, einops, timm==0.4.12, imageio, flask, werkzeug
 - Verifies all packages are properly installed
+
+### Step 3: Setup and Start Web Server
+- Installs Flask web framework dependencies
+- Creates server directories for uploads and results
+- Verifies web server components
+- **Starts the web server automatically at http://localhost:5000**
+
+⚠️ **Important**: The setup script will start the web server and keep it running. Open your browser to http://localhost:5000 to use the interface.
 
 ## Manual Setup
 

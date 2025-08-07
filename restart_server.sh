@@ -1,29 +1,26 @@
 #!/bin/bash
 
-# FlowFormer++ Web Server Startup Script
+# FlowFormer++ Web Server Restart Script
+# Use this script to restart the web server after initial setup
 
-echo "=== Starting FlowFormer++ Web Server ==="
+echo "=== Restarting FlowFormer++ Web Server ==="
 
 # Check if conda environment exists
 if ! conda env list | grep -q "flowformerpp"; then
     echo "Error: flowformerpp conda environment not found"
-    echo "Please run setup_server.sh first to create the environment"
+    echo "Please run './setup_server.sh' first to complete the initial setup"
     exit 1
 fi
 
 # Check if model checkpoints exist
 if [ ! -d "checkpoints" ] || [ ! -f "checkpoints/sintel.pth" ]; then
     echo "Error: Model checkpoints not found"
-    echo "Please run setup_server.sh first to download checkpoints"
+    echo "Please run './setup_server.sh' first to download checkpoints"
     exit 1
 fi
 
-# Create necessary directories
+# Create necessary directories if they don't exist
 mkdir -p tmp/uploads tmp/results
-
-# Install Flask if not already installed
-echo "Checking Flask installation..."
-conda run -n flowformerpp pip install flask werkzeug
 
 echo "Starting web server..."
 echo "The server will be available at: http://localhost:5000"

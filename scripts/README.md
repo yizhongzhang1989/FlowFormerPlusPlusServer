@@ -8,6 +8,7 @@ This directory contains modular setup scripts for the FlowFormer++ project.
 - `common.sh` - Common utility functions and color definitions used by all scripts
 - `download_ckpts.sh` - Downloads model checkpoints from Google Drive
 - `setup_conda_env.sh` - Creates and configures the flowformerpp conda environment
+- `setup_webserver.sh` - Installs Flask dependencies and starts the web server
 
 ### Usage
 
@@ -59,8 +60,15 @@ print_success "Step completed successfully!"
    - Creates `flowformerpp` conda environment if it doesn't exist
    - Installs PyTorch, torchvision, torchaudio with CUDA support
    - Installs additional dependencies (matplotlib, scipy, opencv, etc.)
-   - Installs Python packages from requirements.txt
+   - Installs Python packages from requirements.txt (including Flask)
    - Verifies installation and provides usage instructions
+
+3. **Setup and Start Web Server** (`setup_webserver.sh`)
+   - Ensures Flask dependencies are installed
+   - Creates necessary server directories (tmp/uploads, tmp/results)
+   - Verifies web server components
+   - Starts the Flask web server at http://localhost:5000
+   - Provides interactive web interface for optical flow computation
 
 ## Planned Steps
 

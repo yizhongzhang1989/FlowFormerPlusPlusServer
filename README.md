@@ -88,22 +88,27 @@ Visualizing an image sequence extracted from a video:
 python visualize_flow.py --eval_type seq
 ```
 
-## Web Server
+## 2. Web Server Interface
 
-For easy interactive use, we provide a Flask-based web server:
+The FlowFormer++ model can be accessed through a user-friendly web interface:
 
-```Shell
-# Start the web server
-./start_server.sh
+```bash
+# Initial setup (downloads checkpoints, creates conda environment, starts server)
+./setup_server.sh
+
+# To restart the server after initial setup
+./restart_server.sh
 ```
 
-Then open your browser and go to `http://localhost:5000` to:
-- Upload two images through a web interface
-- Compute optical flow in real-time
-- View and download flow visualizations
-- See detailed flow statistics
+This will:
+- Download pre-trained checkpoints (~300MB)
+- Create conda environment with required packages
+- Start web server at http://localhost:5000
 
-See [WEB_SERVER.md](WEB_SERVER.md) for detailed documentation.
+The web interface provides:
+- Drag-and-drop image upload
+- Real-time optical flow computation
+- Interactive result visualization
 
 ## Image Pair Processing
 

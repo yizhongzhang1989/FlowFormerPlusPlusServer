@@ -19,14 +19,21 @@ fi
 
 print_step "FlowFormer++ Server Setup"
 print_info "Starting automatic setup process..."
+print_info ""
+print_info "This setup will:"
+print_info "  1. Download model checkpoints (~325MB)"
+print_info "  2. Create conda environment with dependencies"
+print_info "  3. Install web server dependencies"
+print_info "  4. Start the web server at http://localhost:5000"
+print_info ""
+print_warning "Note: The web server will start automatically after setup!"
+print_info ""
 
 # Define setup steps
 declare -a SETUP_STEPS=(
     "Step 1: Download Model Checkpoints|$SCRIPTS_DIR/download_ckpts.sh"
     "Step 2: Setup Conda Environment|$SCRIPTS_DIR/setup_conda_env.sh"
-    # Add more steps here as needed:
-    # "Step 3: Setup Environment|$SCRIPTS_DIR/setup_env.sh"
-    # "Step 4: Compile CUDA Extensions|$SCRIPTS_DIR/compile_cuda.sh"
+    "Step 3: Setup and Start Web Server|$SCRIPTS_DIR/setup_webserver.sh"
 )
 
 # Function to run all setup steps
@@ -66,9 +73,10 @@ main() {
     # Run all setup steps
     run_setup
     
+    # Note: The script will end here because the web server keeps running
     print_step "Setup Complete"
     print_success "FlowFormer++ server setup completed successfully!"
-    print_info "You can now start using the FlowFormer++ project."
+    print_info "The web server should now be running at http://localhost:5000"
 }
 
 # Run main function

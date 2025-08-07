@@ -63,7 +63,7 @@ install_pip_packages() {
     # Check if requirements.txt exists
     if [ ! -f "$REQUIREMENTS_FILE" ]; then
         print_warning "requirements.txt not found, installing packages directly"
-        if conda run -n "$ENV_NAME" pip install yacs loguru einops timm==0.4.12 imageio; then
+        if conda run -n "$ENV_NAME" pip install yacs loguru einops timm==0.4.12 imageio flask werkzeug; then
             print_success "Pip packages installed successfully"
         else
             print_error "Failed to install pip packages"
@@ -93,7 +93,7 @@ verify_installation() {
     fi
     
     # Test other key packages
-    local packages=("torchvision" "matplotlib" "scipy" "cv2" "yacs" "loguru" "einops" "timm" "imageio")
+    local packages=("torchvision" "matplotlib" "scipy" "cv2" "yacs" "loguru" "einops" "timm" "imageio" "flask")
     for pkg in "${packages[@]}"; do
         if conda run -n "$ENV_NAME" python -c "import $pkg" 2>/dev/null; then
             print_success "✓ $pkg imported successfully"

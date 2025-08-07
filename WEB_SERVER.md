@@ -13,18 +13,21 @@ A Flask-based web application for computing optical flow between image pairs usi
 
 ## Quick Start
 
-1. **Setup Environment** (if not already done):
+1. **Setup and Start Server** (all-in-one):
    ```bash
    ./setup_server.sh
    ```
 
-2. **Start the Web Server**:
-   ```bash
-   ./start_server.sh
-   ```
+   This single command will:
+   - Download model checkpoints
+   - Setup conda environment
+   - Install all dependencies
+   - **Start the web server automatically**
 
-3. **Access the Web Interface**:
+2. **Access the Web Interface**:
    Open your browser and go to: `http://localhost:5000`
+
+⚠️ **Note**: The setup script starts the web server and keeps it running. You don't need any additional commands.
 
 ## Web Interface
 
@@ -103,20 +106,25 @@ The server can be configured by modifying variables in `app.py`:
 ## Usage Examples
 
 ### Basic Usage
-1. Start the server: `./start_server.sh`
-2. Open browser to `http://localhost:5000`
-3. Upload two images
-4. Click "Compute Optical Flow"
-5. View and download results
+1. Run the setup: `./setup_server.sh`
+2. The server starts automatically and shows: "Server ready! Access the web interface at: http://localhost:5000"
+3. Open browser to `http://localhost:5000`
+4. Upload two images
+5. Click "Compute Optical Flow"
+6. View and download results
 
-### API Usage
+### Manual Server Management
+If you need to start/stop the server manually:
+
 ```bash
-# Upload images via curl
-curl -X POST -F "image1=@img1.jpg" -F "image2=@img2.jpg" \
-     http://localhost:5000/upload
+# Start server (after setup is complete)
+conda activate flowformerpp
+python app.py
 
-# Check server status
-curl http://localhost:5000/status
+# Or run individual setup steps
+./scripts/download_ckpts.sh
+./scripts/setup_conda_env.sh
+./scripts/setup_webserver.sh
 ```
 
 ## Troubleshooting
