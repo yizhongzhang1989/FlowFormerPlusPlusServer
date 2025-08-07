@@ -23,8 +23,8 @@ print_info "Starting automatic setup process..."
 # Define setup steps
 declare -a SETUP_STEPS=(
     "Step 1: Download Model Checkpoints|$SCRIPTS_DIR/download_ckpts.sh"
+    "Step 2: Setup Conda Environment|$SCRIPTS_DIR/setup_conda_env.sh"
     # Add more steps here as needed:
-    # "Step 2: Install Dependencies|$SCRIPTS_DIR/install_deps.sh"
     # "Step 3: Setup Environment|$SCRIPTS_DIR/setup_env.sh"
     # "Step 4: Compile CUDA Extensions|$SCRIPTS_DIR/compile_cuda.sh"
 )
