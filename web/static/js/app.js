@@ -122,6 +122,28 @@ class FlowApp {
         document.getElementById('flowMean').textContent = result.flow_stats.mean.toFixed(3);
         document.getElementById('flowStd').textContent = result.flow_stats.std.toFixed(3);
 
+        // Update dimension information if available
+        if (result.image_info) {
+            const img1Dims = result.image_info.image1_dimensions;
+            const img2Dims = result.image_info.image2_dimensions;
+            const flowDims = result.image_info.flow_dimensions;
+            const dimsMatch = result.image_info.dimensions_match;
+            
+            // Update dimension display (assuming these elements exist in HTML)
+            const dimInfoElement = document.getElementById('dimensionInfo');
+            if (dimInfoElement) {
+                dimInfoElement.innerHTML = `
+                    <strong>Dimensions:</strong><br>
+                    Image 1: ${img1Dims[0]} × ${img1Dims[1]}<br>
+                    Image 2: ${img2Dims[0]} × ${img2Dims[1]}<br>
+                    Flow: ${flowDims[0]} × ${flowDims[1]}<br>
+                    <span class="${dimsMatch ? 'text-success' : 'text-warning'}">
+                        ${dimsMatch ? '✓ Flow matches input dimensions' : '⚠ Flow resized to match input'}
+                    </span>
+                `;
+            }
+        }
+
         // Store result filename for download
         document.getElementById('downloadBtn').dataset.filename = result.result_filename;
     }

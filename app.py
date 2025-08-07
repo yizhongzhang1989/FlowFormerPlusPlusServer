@@ -112,23 +112,37 @@ def load_model():
         raise
 
 
-def prepare_image(image_path, target_size=(432, 960)):
+def prepare_image(image_path, target_size=None, max_size=1024):
     """Load and prepare image for flow computation"""
     image = frame_utils.read_gen(image_path)
     image = np.array(image).astype(np.uint8)[..., :3]
     
-    # Adaptive resize to target size
-    h, w = image.shape[:2]
-    scale_h = target_size[0] / h
-    scale_w = target_size[1] / w
-    scale = max(scale_h, scale_w)
+    # Store original dimensions
+    original_h, original_w = image.shape[:2]
     
-    new_h, new_w = int(h * scale), int(w * scale)
-    image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+    # If no target size specified, use adaptive sizing based on max_size
+    if target_size is None:
+        h, w = original_h, original_w
+        
+        # Scale down if image is too large
+        if max(h, w) > max_size:
+            scale = max_size / max(h, w)
+            h, w = int(h * scale), int(w * scale)
+        
+        # Ensure dimensions are divisible by 8 (common requirement for optical flow models)
+        h = (h // 8) * 8
+        w = (w // 8) * 8
+        
+        if h != original_h or w != original_w:
+            image = cv2.resize(image, (w, h), interpolation=cv2.INTER_CUBIC)
+    else:
+        # Use specified target size
+        h, w = target_size
+        image = cv2.resize(image, (w, h), interpolation=cv2.INTER_CUBIC)
     
     # Convert to tensor
     image_tensor = torch.from_numpy(image).permute(2, 0, 1).float()
-    return image_tensor, (new_h, new_w)
+    return image_tensor, (h, w), (original_h, original_w)
 
 
 def compute_flow(image1_path, image2_path):
@@ -136,14 +150,21 @@ def compute_flow(image1_path, image2_path):
     global model, device
     
     # Load and prepare images
-    img1_tensor, img1_size = prepare_image(image1_path)
-    img2_tensor, img2_size = prepare_image(image2_path)
+    img1_tensor, img1_proc_size, img1_orig_size = prepare_image(image1_path, max_size=MAX_IMAGE_SIZE)
+    img2_tensor, img2_proc_size, img2_orig_size = prepare_image(image2_path, max_size=MAX_IMAGE_SIZE)
     
-    # Ensure images have the same size
-    if img1_size != img2_size:
-        # Resize to common size
-        common_h = min(img1_size[0], img2_size[0])
-        common_w = min(img1_size[1], img2_size[1])
+    # Use the original size of the first image as target output size
+    target_output_size = img1_orig_size
+    
+    # Ensure processed images have the same size for flow computation
+    if img1_proc_size != img2_proc_size:
+        # Resize to common size (use the smaller dimensions to preserve detail)
+        common_h = min(img1_proc_size[0], img2_proc_size[0])
+        common_w = min(img1_proc_size[1], img2_proc_size[1])
+        
+        # Ensure dimensions are divisible by 8
+        common_h = (common_h // 8) * 8
+        common_w = (common_w // 8) * 8
         
         img1_tensor = F.interpolate(
             img1_tensor.unsqueeze(0), 
@@ -158,6 +179,10 @@ def compute_flow(image1_path, image2_path):
             mode='bilinear', 
             align_corners=False
         ).squeeze(0)
+        
+        proc_size = (common_h, common_w)
+    else:
+        proc_size = img1_proc_size
     
     # Move to device and add batch dimension
     img1_tensor = img1_tensor.unsqueeze(0).to(device)
@@ -174,6 +199,22 @@ def compute_flow(image1_path, image2_path):
         # Convert to numpy
         flow = flow_pred[0].permute(1, 2, 0).cpu().numpy()
     
+    # Resize flow back to original image dimensions
+    if proc_size != target_output_size:
+        # Calculate scaling factors
+        scale_h = target_output_size[0] / proc_size[0]
+        scale_w = target_output_size[1] / proc_size[1]
+        
+        # Resize flow field
+        flow_resized = cv2.resize(flow, (target_output_size[1], target_output_size[0]), 
+                                  interpolation=cv2.INTER_LINEAR)
+        
+        # Scale flow vectors according to the resize ratio
+        flow_resized[:, :, 0] *= scale_w  # x-component
+        flow_resized[:, :, 1] *= scale_h  # y-component
+        
+        flow = flow_resized
+    
     return flow
 
 
@@ -182,6 +223,14 @@ def save_flow_visualization(flow, output_path):
     flow_img = flow_viz.flow_to_image(flow)
     cv2.imwrite(output_path, flow_img[:, :, [2, 1, 0]])  # RGB to BGR for OpenCV
     return output_path
+
+
+def get_image_dimensions(image_path):
+    """Get original image dimensions"""
+    image = frame_utils.read_gen(image_path)
+    image = np.array(image).astype(np.uint8)[..., :3]
+    h, w = image.shape[:2]
+    return h, w
 
 
 @app.route('/')
@@ -222,6 +271,10 @@ def upload_files():
         file1.save(filepath1)
         file2.save(filepath2)
         
+        # Get original image dimensions
+        img1_h, img1_w = get_image_dimensions(filepath1)
+        img2_h, img2_w = get_image_dimensions(filepath2)
+        
         # Compute optical flow
         start_time = time.time()
         flow = compute_flow(filepath1, filepath2)
@@ -241,12 +294,21 @@ def upload_files():
             'std': float(flow.std())
         }
         
+        # Image dimension information
+        image_info = {
+            'image1_dimensions': [img1_h, img1_w],
+            'image2_dimensions': [img2_h, img2_w], 
+            'flow_dimensions': list(flow.shape[:2]),
+            'dimensions_match': (flow.shape[0] == img1_h and flow.shape[1] == img1_w)
+        }
+        
         return jsonify({
             'success': True,
             'session_id': session_id,
             'result_filename': result_filename,
             'computation_time': round(computation_time, 2),
-            'flow_stats': flow_stats
+            'flow_stats': flow_stats,
+            'image_info': image_info
         })
         
     except Exception as e:
