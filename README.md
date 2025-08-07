@@ -109,6 +109,17 @@ The web interface provides:
 - Drag-and-drop image upload
 - Real-time optical flow computation
 - Interactive result visualization
+- **Configurable server settings via `config.json`**
+
+### Server Configuration
+
+The server behavior can be customized by editing `config.json`:
+- **Port**: Change server port (default: 5000)
+- **Host**: Configure network access (default: 0.0.0.0)
+- **GPU/CPU**: Force device selection or auto-detect
+- **File limits**: Adjust upload size and allowed formats
+
+See [CONFIG.md](CONFIG.md) for detailed configuration options.
 
 ## Image Pair Processing
 

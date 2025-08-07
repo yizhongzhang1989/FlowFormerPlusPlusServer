@@ -23,10 +23,12 @@ print_info ""
 print_info "This setup will:"
 print_info "  1. Download model checkpoints (~325MB)"
 print_info "  2. Create conda environment with dependencies"
-print_info "  3. Install web server dependencies"
-print_info "  4. Start the web server at http://localhost:5000"
+print_info "  3. Create configuration file (config.json)"
+print_info "  4. Install web server dependencies"
+print_info "  5. Start the web server (default: http://localhost:5000)"
 print_info ""
 print_warning "Note: The web server will start automatically after setup!"
+print_info "You can customize server settings by editing config.json"
 print_info ""
 
 # Define setup steps
@@ -76,7 +78,9 @@ main() {
     # Note: The script will end here because the web server keeps running
     print_step "Setup Complete"
     print_success "FlowFormer++ server setup completed successfully!"
-    print_info "The web server should now be running at http://localhost:5000"
+    print_info "The web server should now be running"
+    print_info "Check the output above for the server URL"
+    print_info "You can customize settings by editing config.json"
 }
 
 # Run main function

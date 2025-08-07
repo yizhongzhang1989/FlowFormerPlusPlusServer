@@ -8,6 +8,7 @@ import os
 import sys
 import uuid
 import time
+import json
 from pathlib import Path
 from flask import Flask, request, jsonify, send_file, render_template
 from werkzeug.utils import secure_filename
@@ -25,11 +26,35 @@ from core.utils import flow_viz, frame_utils
 from core.utils.utils import InputPadder
 import torch.nn.functional as F
 
-# Configuration
-UPLOAD_FOLDER = 'tmp/uploads'
-RESULT_FOLDER = 'tmp/results'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'bmp', 'tiff'}
-MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
+# Load configuration from config.json
+def load_config():
+    """Load configuration from config.json file."""
+    config_path = 'config.json'
+    if os.path.exists(config_path):
+        with open(config_path, 'r') as f:
+            return json.load(f)
+    else:
+        # Fallback configuration if file doesn't exist
+        print(f"Warning: {config_path} not found, using default configuration")
+        return {
+            "server": {"host": "0.0.0.0", "port": 5000, "debug": False},
+            "model": {"checkpoint_path": "checkpoints/sintel.pth", "device": "auto", "max_image_size": 1024},
+            "upload": {"max_file_size_mb": 10, "allowed_extensions": ["png", "jpg", "jpeg", "bmp", "tiff"], 
+                      "upload_folder": "tmp/uploads", "results_folder": "tmp/results"},
+            "processing": {"auto_cleanup": True, "cleanup_interval_hours": 24, "max_stored_results": 100}
+        }
+
+# Load configuration
+config = load_config()
+
+# Extract configuration values
+UPLOAD_FOLDER = config['upload']['upload_folder']
+RESULT_FOLDER = config['upload']['results_folder']
+MAX_FILE_SIZE_MB = config['upload']['max_file_size_mb']
+ALLOWED_EXTENSIONS = set(config['upload']['allowed_extensions'])
+CHECKPOINT_PATH = config['model']['checkpoint_path']
+MAX_IMAGE_SIZE = config['model']['max_image_size']
+MAX_CONTENT_LENGTH = MAX_FILE_SIZE_MB * 1024 * 1024  # Convert MB to bytes
 
 # Global model variable - loaded once at startup
 model = None
@@ -57,15 +82,22 @@ def load_model():
     
     print("Loading FlowFormer++ model...")
     cfg = get_cfg()
-    cfg.model = "checkpoints/sintel.pth"
+    cfg.model = CHECKPOINT_PATH
     
-    # Check if CUDA is available
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-        print(f"Using GPU: {torch.cuda.get_device_name()}")
+    # Determine device based on config
+    device_config = config['model']['device']
+    if device_config == "auto":
+        # Auto-detect device
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+            print(f"Using GPU: {torch.cuda.get_device_name()}")
+        else:
+            device = torch.device('cpu')
+            print("Using CPU")
     else:
-        device = torch.device('cpu')
-        print("Using CPU")
+        # Use specified device
+        device = torch.device(device_config)
+        print(f"Using device: {device}")
     
     # Build and load model
     model = torch.nn.DataParallel(build_flowformer(cfg))
@@ -302,8 +334,14 @@ if __name__ == '__main__':
     # Clean up old files
     cleanup_old_files()
     
+    # Get server configuration
+    server_config = config['server']
+    host = server_config['host']
+    port = server_config['port']
+    debug = server_config['debug']
+    
     print("Server ready!")
-    print("Access the web interface at: http://localhost:5000")
+    print(f"Access the web interface at: http://localhost:{port}")
     
     # Run Flask app
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host=host, port=port, debug=debug)
