@@ -87,6 +87,42 @@ Visualizing an image sequence extracted from a video:
 ```Shell
 python visualize_flow.py --eval_type seq
 ```
+
+## Web Server
+
+For easy interactive use, we provide a Flask-based web server:
+
+```Shell
+# Start the web server
+./start_server.sh
+```
+
+Then open your browser and go to `http://localhost:5000` to:
+- Upload two images through a web interface
+- Compute optical flow in real-time
+- View and download flow visualizations
+- See detailed flow statistics
+
+See [WEB_SERVER.md](WEB_SERVER.md) for detailed documentation.
+
+## Image Pair Processing
+
+For processing individual image pairs from command line:
+
+```Shell
+# Basic usage with sample images
+python visualize_flow_img_pair.py
+
+# Custom image pair
+python visualize_flow_img_pair.py --img1 path/to/image1.jpg --img2 path/to/image2.jpg
+
+# Keep original size (no resizing)
+python visualize_flow_img_pair.py --keep_size
+
+# Use tiling for large images
+python visualize_flow_img_pair.py --use_tiling
+```
+
 The default image sequence format is:
 ```Shell
 ├── demo_data
