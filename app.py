@@ -275,6 +275,16 @@ def upload_files():
         img1_h, img1_w = get_image_dimensions(filepath1)
         img2_h, img2_w = get_image_dimensions(filepath2)
         
+        # Validate that input images have matching dimensions
+        if img1_h != img2_h or img1_w != img2_w:
+            error_msg = f"Image dimension mismatch: Image 1 is {img1_w}×{img1_h}, but Image 2 is {img2_w}×{img2_h}. Both images must have the same dimensions for optical flow computation."
+            return jsonify({
+                'error': error_msg,
+                'image1_dimensions': [img1_h, img1_w],
+                'image2_dimensions': [img2_h, img2_w],
+                'suggestion': 'Please resize both images to the same dimensions before uploading.'
+            }), 400
+        
         # Compute optical flow
         start_time = time.time()
         flow = compute_flow(filepath1, filepath2)

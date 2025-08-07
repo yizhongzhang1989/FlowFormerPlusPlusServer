@@ -37,13 +37,70 @@ class FlowApp {
         if (input.files && input.files[0]) {
             const reader = new FileReader();
             const preview = document.getElementById(previewId);
+            const dimIndicatorId = previewId.replace('preview', 'dimensions');
+            const dimIndicator = document.getElementById(dimIndicatorId);
             
             reader.onload = function(e) {
                 preview.src = e.target.result;
                 preview.style.display = 'block';
-            };
+                
+                // Create a temporary image to get dimensions
+                const tempImg = new Image();
+                tempImg.onload = function() {
+                    if (dimIndicator) {
+                        const dimensionSpan = dimIndicator.querySelector('.fw-bold');
+                        if (dimensionSpan) {
+                            dimensionSpan.textContent = `${this.width} × ${this.height}`;
+                        }
+                        dimIndicator.style.display = 'block';
+                    }
+                    
+                    // Check dimension compatibility
+                    this.checkDimensionCompatibility();
+                }.bind(this);
+                tempImg.src = e.target.result;
+            }.bind(this);
             
             reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    checkDimensionCompatibility() {
+        const dim1 = document.querySelector('#dimensions1 .fw-bold');
+        const dim2 = document.querySelector('#dimensions2 .fw-bold');
+        
+        if (dim1 && dim2 && dim1.textContent && dim2.textContent) {
+            const match = dim1.textContent === dim2.textContent;
+            
+            // Update visual indicators
+            const indicators = [document.getElementById('dimensions1'), document.getElementById('dimensions2')];
+            indicators.forEach(indicator => {
+                indicator.classList.remove('text-success', 'text-danger');
+                if (match) {
+                    indicator.classList.add('text-success');
+                } else {
+                    indicator.classList.add('text-danger');
+                }
+            });
+            
+            // Show/hide warning message
+            this.showDimensionWarning(!match);
+        }
+    }
+
+    showDimensionWarning(show) {
+        let warning = document.getElementById('dimensionWarning');
+        if (show && !warning) {
+            // Create warning element
+            warning = document.createElement('div');
+            warning.id = 'dimensionWarning';
+            warning.className = 'alert alert-warning mt-2';
+            warning.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>Images have different dimensions. Please resize them to match before computing flow.';
+            
+            const form = document.getElementById('uploadForm');
+            form.appendChild(warning);
+        } else if (!show && warning) {
+            warning.remove();
         }
     }
 
@@ -93,7 +150,14 @@ class FlowApp {
                 this.displayResults(result);
                 this.hideProgress();
             } else {
-                throw new Error(result.error || 'Upload failed');
+                // Handle specific error types
+                if (result.image1_dimensions && result.image2_dimensions) {
+                    // Dimension mismatch error
+                    this.showDimensionError(result);
+                } else {
+                    // Generic error
+                    throw new Error(result.error || 'Upload failed');
+                }
             }
         } catch (error) {
             console.error('Error computing flow:', error);
@@ -187,6 +251,21 @@ class FlowApp {
 
     showError(message) {
         document.getElementById('errorMessage').textContent = message;
+        const modal = new bootstrap.Modal(document.getElementById('errorModal'));
+        modal.show();
+    }
+
+    showDimensionError(result) {
+        const [h1, w1] = result.image1_dimensions;
+        const [h2, w2] = result.image2_dimensions;
+        
+        const message = `Image Dimension Mismatch!\n\n` +
+                       `• Image 1: ${w1} × ${h1} pixels\n` +
+                       `• Image 2: ${w2} × ${h2} pixels\n\n` +
+                       `Both images must have the same dimensions for optical flow computation.\n\n` +
+                       `Please resize both images to match before uploading.`;
+        
+        document.getElementById('errorMessage').innerHTML = message.replace(/\n/g, '<br>');
         const modal = new bootstrap.Modal(document.getElementById('errorModal'));
         modal.show();
     }
