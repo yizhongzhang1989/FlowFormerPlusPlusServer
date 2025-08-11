@@ -2,16 +2,17 @@
 """
 Simple FlowFormer++ API Usage Example
 
-This script demonstrates how to use the FlowFormer++ API programmatically.
+This script demonstrates how to use the FlowFormer++ API programmatically
+using the provided FlowFormer API client.
 """
 
-import requests
 import os
+from flowformer_api import FlowFormerClient
 
 
 def compute_flow_via_api(server_url, image1_path, image2_path, output_path=None):
     """
-    Compute optical flow using FlowFormer++ API
+    Compute optical flow using FlowFormer++ API client
     
     Args:
         server_url: URL of the FlowFormer++ server (e.g., "http://localhost:5000")
@@ -20,68 +21,58 @@ def compute_flow_via_api(server_url, image1_path, image2_path, output_path=None)
         output_path: Optional path to save the result image
         
     Returns:
-        dict: API response with flow statistics
+        dict: Flow information and statistics
     """
     
-    # 1. Check if server is running
-    try:
-        status_response = requests.get(f"{server_url}/status", timeout=5)
-        status_response.raise_for_status()
-        status = status_response.json()
-        
-        if not status.get('model_loaded'):
-            raise Exception("FlowFormer++ model not loaded on server")
-            
-        print(f"✅ Server is running on {status.get('device', 'unknown')} device")
-        
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Server not reachable: {e}")
+    # 1. Initialize client and check server
+    print("🔧 Initializing FlowFormer++ client...")
+    client = FlowFormerClient(server_url)
     
-    # 2. Upload images and compute flow
-    print("🔄 Computing optical flow...")
+    if not client.setup():
+        raise Exception("Server not reachable or model not loaded")
     
+    print(f"✅ Connected to FlowFormer++ server at {server_url}")
+    
+    # 2. Read image files
+    print("� Reading image files...")
     with open(image1_path, 'rb') as f1, open(image2_path, 'rb') as f2:
-        files = {
-            'image1': ('image1.jpg', f1, 'image/jpeg'),
-            'image2': ('image2.jpg', f2, 'image/jpeg')
-        }
+        image1_data = f1.read()
+        image2_data = f2.read()
+    
+    print(f"   Image 1: {len(image1_data)} bytes")
+    print(f"   Image 2: {len(image2_data)} bytes")
+    
+    # 3. Compute optical flow (without auto-cleanup to get statistics)
+    print("🔄 Computing optical flow...")
+    flow_image_data = client.compute_flow(image1_data, image2_data, auto_cleanup=False)
+    
+    # 4. Get flow statistics
+    if client.session_id:
+        print("📊 Getting flow statistics...")
+        flow_info = client.get_flow_info(client.session_id)
         
-        upload_response = requests.post(f"{server_url}/upload", files=files, timeout=120)
-        upload_response.raise_for_status()
-        result = upload_response.json()
-    
-    if not result.get('success'):
-        raise Exception(f"Flow computation failed: {result.get('error', 'Unknown error')}")
-    
-    session_id = result['session_id']
-    print(f"✅ Flow computed successfully (Session: {session_id})")
-    print(f"   Computation time: {result['computation_time']}s")
-    print(f"   Flow shape: {result['flow_stats']['shape']}")
-    print(f"   Flow range: [{result['flow_stats']['min']:.2f}, {result['flow_stats']['max']:.2f}]")
-    
-    # 3. Download result image
-    print("📥 Downloading result...")
-    
-    result_response = requests.get(f"{server_url}/result/{session_id}", timeout=30)
-    result_response.raise_for_status()
-    
-    image_data = result_response.content
-    print(f"✅ Downloaded {len(image_data)} bytes")
-    
-    # 4. Save result if output path provided
-    if output_path:
-        # Ensure the directory exists
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        with open(output_path, 'wb') as f:
-            f.write(image_data)
-        print(f"💾 Saved result to: {output_path}")
-    
-    # 5. Clean up (optional)
-    cleanup_response = requests.post(f"{server_url}/cleanup/{session_id}", timeout=10)
-    if cleanup_response.status_code == 200:
+        stats = flow_info.get('flow_stats', {})
+        print(f"   Flow shape: {stats.get('shape', 'N/A')}")
+        if 'magnitude' in stats:
+            mag_stats = stats['magnitude']
+            print(f"   Flow magnitude range: [{mag_stats.get('min', 0):.2f}, {mag_stats.get('max', 0):.2f}]")
+            print(f"   Average magnitude: {mag_stats.get('mean', 0):.2f} pixels")
+        
+        # Clean up session
+        client.cleanup_session(client.session_id)
         print("🧹 Session cleaned up")
     
-    return result
+    # 5. Save result if output path provided
+    if output_path:
+        print("💾 Saving result...")
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, 'wb') as f:
+            f.write(flow_image_data)
+        print(f"   Saved to: {output_path}")
+    
+    print(f"✅ Downloaded {len(flow_image_data)} bytes")
+    
+    return flow_info if client.session_id else {'success': True}
 
 
 # Example usage

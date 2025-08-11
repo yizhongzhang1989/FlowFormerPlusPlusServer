@@ -647,6 +647,80 @@ def flow_to_image_bytes(flow, format='PNG'):
     return img_buffer.getvalue()
 
 
+def flow_to_bytes(flow, dtype=None):
+    """Convert flow array to bytes for transmission
+    
+    Args:
+        flow: Flow field as numpy array (H, W, 2)
+        dtype: Target data type (default: float32)
+        
+    Returns:
+        bytes: Serialized flow data
+    """
+    import io
+    
+    if dtype is not None:
+        flow = flow.astype(dtype)
+    
+    buffer = io.BytesIO()
+    np.save(buffer, flow)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def flow_from_bytes(flow_bytes):
+    """Load flow array from bytes
+    
+    Args:
+        flow_bytes: Serialized flow data as bytes
+        
+    Returns:
+        numpy array: Flow field (H, W, 2)
+    """
+    import io
+    
+    buffer = io.BytesIO(flow_bytes)
+    buffer.seek(0)
+    return np.load(buffer)
+
+
+def get_flow_statistics(flow):
+    """Get comprehensive flow statistics
+    
+    Args:
+        flow: Flow field as numpy array (H, W, 2)
+        
+    Returns:
+        dict: Flow statistics
+    """
+    flow_magnitude = np.sqrt(flow[:, :, 0]**2 + flow[:, :, 1]**2)
+    
+    return {
+        'shape': list(flow.shape),
+        'dtype': str(flow.dtype),
+        'flow_x': {
+            'min': float(flow[:, :, 0].min()),
+            'max': float(flow[:, :, 0].max()),
+            'mean': float(flow[:, :, 0].mean()),
+            'std': float(flow[:, :, 0].std())
+        },
+        'flow_y': {
+            'min': float(flow[:, :, 1].min()),
+            'max': float(flow[:, :, 1].max()),
+            'mean': float(flow[:, :, 1].mean()),
+            'std': float(flow[:, :, 1].std())
+        },
+        'magnitude': {
+            'min': float(flow_magnitude.min()),
+            'max': float(flow_magnitude.max()),
+            'mean': float(flow_magnitude.mean()),
+            'std': float(flow_magnitude.std())
+        },
+        'total_pixels': int(flow.shape[0] * flow.shape[1]),
+        'size_bytes': int(flow.nbytes)
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description='Visualize optical flow between two images')
     parser.add_argument('--img1', type=str, default='sample_data/img1.jpg', 

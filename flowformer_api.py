@@ -132,6 +132,62 @@ class FlowFormerClient:
         except requests.exceptions.RequestException as e:
             raise Exception(f"API request failed: {e}")
     
+    def compute_raw_flow(self,
+                        image1_data: bytes,
+                        image2_data: bytes,
+                        auto_cleanup: bool = True) -> np.ndarray:
+        """Compute optical flow and return raw flow array
+        
+        Args:
+            image1_data: First image as bytes (JPEG, PNG, etc.)
+            image2_data: Second image as bytes (JPEG, PNG, etc.)
+            auto_cleanup: Whether to automatically cleanup session after computation
+            
+        Returns:
+            np.ndarray: Raw flow field (H, W, 2)
+            
+        Raises:
+            Exception: If computation fails
+        """
+        try:
+            # Prepare files for upload
+            files = {
+                'image1': ('image1.jpg', io.BytesIO(image1_data), 'image/jpeg'),
+                'image2': ('image2.jpg', io.BytesIO(image2_data), 'image/jpeg')
+            }
+            
+            # Upload and compute
+            start_time = time.time()
+            response = requests.post(
+                f"{self.server_url}/upload",
+                files=files,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            if not result.get('success'):
+                raise Exception(f"Computation failed: {result.get('error', 'Unknown error')}")
+            
+            self.session_id = result.get('session_id')
+            computation_time = time.time() - start_time
+            
+            # Download raw flow data
+            flow_data = self.download_raw_flow(self.session_id)
+            
+            # Optional cleanup
+            if auto_cleanup:
+                self.cleanup_session(self.session_id)
+                
+            print(f"✅ Raw flow computed in {computation_time:.2f}s")
+            print(f"   Flow shape: {flow_data.shape}")
+            return flow_data
+            
+        except requests.exceptions.Timeout:
+            raise Exception("Request timeout - computation took too long")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"API request failed: {e}")
+    
     def compute_flow_from_arrays(self, 
                                 image1: np.ndarray, 
                                 image2: np.ndarray,
@@ -158,6 +214,30 @@ class FlowFormerClient:
         img2_bytes = self._array_to_bytes(image2, image_format, quality)
         
         return self.compute_flow(img1_bytes, img2_bytes, auto_cleanup)
+    
+    def compute_raw_flow_from_arrays(self,
+                                    image1: np.ndarray,
+                                    image2: np.ndarray,
+                                    image_format: str = 'JPEG',
+                                    quality: int = 95,
+                                    auto_cleanup: bool = True) -> np.ndarray:
+        """Compute raw optical flow from numpy arrays
+        
+        Args:
+            image1: First image as numpy array (H, W, 3) uint8
+            image2: Second image as numpy array (H, W, 3) uint8
+            image_format: Image format for transfer ('JPEG', 'PNG')
+            quality: JPEG quality (1-100, ignored for PNG)
+            auto_cleanup: Whether to automatically cleanup session after computation
+            
+        Returns:
+            np.ndarray: Raw flow field (H, W, 2)
+        """
+        # Convert numpy arrays to bytes
+        img1_bytes = self._array_to_bytes(image1, image_format, quality)
+        img2_bytes = self._array_to_bytes(image2, image_format, quality)
+        
+        return self.compute_raw_flow(img1_bytes, img2_bytes, auto_cleanup)
     
     def compute_flow_from_pil(self,
                              image1: Image.Image,
@@ -205,6 +285,59 @@ class FlowFormerClient:
             
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to download result: {e}")
+    
+    def download_raw_flow(self, session_id: str) -> np.ndarray:
+        """Download raw flow data as numpy array
+        
+        Args:
+            session_id: Session ID from computation
+            
+        Returns:
+            np.ndarray: Raw flow field (H, W, 2)
+            
+        Raises:
+            Exception: If download fails
+        """
+        try:
+            response = requests.get(
+                f"{self.server_url}/flow/{session_id}",
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            # Parse flow data from bytes
+            import io
+            buffer = io.BytesIO(response.content)
+            buffer.seek(0)
+            flow_data = np.load(buffer)
+            
+            return flow_data
+            
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Failed to download raw flow: {e}")
+    
+    def get_flow_info(self, session_id: str) -> dict:
+        """Get detailed flow information and statistics
+        
+        Args:
+            session_id: Session ID from computation
+            
+        Returns:
+            dict: Flow information and statistics
+            
+        Raises:
+            Exception: If request fails
+        """
+        try:
+            response = requests.get(
+                f"{self.server_url}/flow/{session_id}/info",
+                timeout=10
+            )
+            response.raise_for_status()
+            return response.json()
+            
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Failed to get flow info: {e}")
     
     def cleanup_session(self, session_id: str) -> bool:
         """Clean up session from server memory
@@ -329,6 +462,23 @@ def compute_flow_quick(image1_data: bytes,
     return client.compute_flow(image1_data, image2_data)
 
 
+def compute_raw_flow_quick(image1_data: bytes,
+                          image2_data: bytes,
+                          server_url: str = "http://localhost:5000") -> np.ndarray:
+    """Quick function to compute raw optical flow
+    
+    Args:
+        image1_data: First image as bytes
+        image2_data: Second image as bytes
+        server_url: Server URL
+        
+    Returns:
+        np.ndarray: Raw flow field (H, W, 2)
+    """
+    client = FlowFormerClient(server_url)
+    return client.compute_raw_flow(image1_data, image2_data)
+
+
 def compute_flow_from_files(image1_path: str,
                            image2_path: str,
                            server_url: str = "http://localhost:5000") -> bytes:
@@ -347,6 +497,26 @@ def compute_flow_from_files(image1_path: str,
         img2_data = f2.read()
     
     return compute_flow_quick(img1_data, img2_data, server_url)
+
+
+def compute_raw_flow_from_files(image1_path: str,
+                               image2_path: str,
+                               server_url: str = "http://localhost:5000") -> np.ndarray:
+    """Compute raw flow from image files (convenience function)
+    
+    Args:
+        image1_path: Path to first image
+        image2_path: Path to second image
+        server_url: Server URL
+        
+    Returns:
+        np.ndarray: Raw flow field (H, W, 2)
+    """
+    with open(image1_path, 'rb') as f1, open(image2_path, 'rb') as f2:
+        img1_data = f1.read()
+        img2_data = f2.read()
+    
+    return compute_raw_flow_quick(img1_data, img2_data, server_url)
 
 
 if __name__ == "__main__":

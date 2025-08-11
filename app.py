@@ -152,15 +152,17 @@ def upload_files():
         if not hasattr(app, 'result_cache'):
             app.result_cache = {}
         
+        # Store both raw flow data and visualization
         app.result_cache[session_id] = {
-            'result_bytes': result_bytes,
+            'flow_data': flow,  # Raw flow array
+            'result_bytes': result_bytes,  # Visualization image
             'timestamp': time.time(),
-            'flow_stats': {
-                'shape': flow.shape,
-                'min': float(flow.min()),
-                'max': float(flow.max()),
-                'mean': float(flow.mean()),
-                'std': float(flow.std())
+            'flow_stats': flow_utils.get_flow_statistics(flow),
+            'image_info': {
+                'image1_dimensions': [img1_h, img1_w],
+                'image2_dimensions': [img2_h, img2_w], 
+                'flow_dimensions': list(flow.shape[:2]),
+                'dimensions_match': (flow.shape[0] == img1_h and flow.shape[1] == img1_w)
             }
         }
         
@@ -172,22 +174,10 @@ def upload_files():
         for key in expired_keys:
             del app.result_cache[key]
         
-        # Get flow statistics
-        flow_stats = {
-            'shape': flow.shape,
-            'min': float(flow.min()),
-            'max': float(flow.max()),
-            'mean': float(flow.mean()),
-            'std': float(flow.std())
-        }
-        
-        # Image dimension information
-        image_info = {
-            'image1_dimensions': [img1_h, img1_w],
-            'image2_dimensions': [img2_h, img2_w], 
-            'flow_dimensions': list(flow.shape[:2]),
-            'dimensions_match': (flow.shape[0] == img1_h and flow.shape[1] == img1_w)
-        }
+        # Get flow statistics and image info from cached data
+        cached_result = app.result_cache[session_id]
+        flow_stats = cached_result['flow_stats']
+        image_info = cached_result['image_info']
         
         return jsonify({
             'success': True,
@@ -195,7 +185,12 @@ def upload_files():
             'computation_time': round(computation_time, 2),
             'flow_stats': flow_stats,
             'image_info': image_info,
-            'note': 'Result stored in memory - use /result/<session_id> to download'
+            'endpoints': {
+                'visualization': f'/result/{session_id}',
+                'raw_flow': f'/flow/{session_id}',
+                'flow_info': f'/flow/{session_id}/info'
+            },
+            'note': 'Result stored in memory - use endpoints to access data'
         })
         
     except Exception as e:
@@ -230,6 +225,68 @@ def get_result(session_id):
         
     except Exception as e:
         print(f"Error serving result: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/flow/<session_id>')
+def get_raw_flow(session_id):
+    """Serve raw flow data as numpy array bytes"""
+    try:
+        # Check if we have the result in memory cache
+        if not hasattr(app, 'result_cache') or session_id not in app.result_cache:
+            return jsonify({'error': 'Flow data not found or expired'}), 404
+        
+        # Get raw flow from cache
+        cached_result = app.result_cache[session_id]
+        flow_data = cached_result['flow_data']
+        
+        # Convert flow to bytes
+        flow_bytes = flow_utils.flow_to_bytes(flow_data, dtype=np.float32)
+        
+        # Create response with binary data
+        from flask import Response
+        return Response(
+            flow_bytes,
+            mimetype='application/octet-stream',
+            headers={
+                'Content-Disposition': f'attachment; filename=flow_data_{session_id}.npy',
+                'Content-Type': 'application/octet-stream',
+                'X-Flow-Shape': f"{flow_data.shape[0]},{flow_data.shape[1]},{flow_data.shape[2]}",
+                'X-Flow-Dtype': str(flow_data.dtype),
+                'Cache-Control': 'no-cache'
+            }
+        )
+        
+    except Exception as e:
+        print(f"Error serving raw flow: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/flow/<session_id>/info')
+def get_flow_info(session_id):
+    """Get detailed flow information and statistics"""
+    try:
+        # Check if we have the result in memory cache
+        if not hasattr(app, 'result_cache') or session_id not in app.result_cache:
+            return jsonify({'error': 'Flow data not found or expired'}), 404
+        
+        # Get cached data
+        cached_result = app.result_cache[session_id]
+        
+        return jsonify({
+            'session_id': session_id,
+            'timestamp': cached_result['timestamp'],
+            'flow_stats': cached_result['flow_stats'],
+            'image_info': cached_result['image_info'],
+            'endpoints': {
+                'visualization': f'/result/{session_id}',
+                'raw_flow': f'/flow/{session_id}',
+                'flow_info': f'/flow/{session_id}/info'
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error getting flow info: {e}")
         return jsonify({'error': str(e)}), 500
 
 

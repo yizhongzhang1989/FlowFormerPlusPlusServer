@@ -39,10 +39,27 @@ Upload two images and compute optical flow between them.
   "computation_time": 0.91,
   "flow_stats": {
     "shape": [1276, 1702, 2],
-    "min": -289.95,
-    "max": 209.87,
-    "mean": 2.34,
-    "std": 15.67
+    "dtype": "float32",
+    "flow_x": {
+      "min": -289.95,
+      "max": 150.23,
+      "mean": 2.34,
+      "std": 12.45
+    },
+    "flow_y": {
+      "min": -45.67,
+      "max": 209.87,
+      "mean": -1.12,
+      "std": 8.91
+    },
+    "magnitude": {
+      "min": 0.0,
+      "max": 334.12,
+      "mean": 15.67,
+      "std": 18.23
+    },
+    "total_pixels": 2168552,
+    "size_bytes": 17348416
   },
   "image_info": {
     "image1_dimensions": [1276, 1702],
@@ -50,11 +67,16 @@ Upload two images and compute optical flow between them.
     "flow_dimensions": [1276, 1702],
     "dimensions_match": true
   },
-  "note": "Result stored in memory - use /result/<session_id> to download"
+  "endpoints": {
+    "visualization": "/result/a19f69d9-b1f8-4ada-a90e-aa5a5af20497",
+    "raw_flow": "/flow/a19f69d9-b1f8-4ada-a90e-aa5a5af20497",
+    "flow_info": "/flow/a19f69d9-b1f8-4ada-a90e-aa5a5af20497/info"
+  },
+  "note": "Result stored in memory - use endpoints to access data"
 }
 ```
 
-### 3. Download Result
+### 3. Download Flow Visualization
 **GET** `/result/<session_id>`
 
 Download the flow visualization image.
@@ -63,7 +85,78 @@ Download the flow visualization image.
 - Content-Type: `image/png`
 - Body: PNG image data
 
-### 4. Cleanup Session
+### 4. Download Raw Flow Data
+**GET** `/flow/<session_id>`
+
+Download the raw optical flow field as numpy array.
+
+**Response:**
+- Content-Type: `application/octet-stream`
+- Headers:
+  - `X-Flow-Shape`: Flow array dimensions (e.g., "1276,1702,2")
+  - `X-Flow-Dtype`: Data type (e.g., "float32")
+- Body: Binary numpy array data (.npy format)
+
+**Usage:**
+```python
+import requests
+import numpy as np
+import io
+
+response = requests.get(f'http://localhost:5000/flow/{session_id}')
+buffer = io.BytesIO(response.content)
+flow_array = np.load(buffer)  # Shape: (H, W, 2)
+```
+
+### 5. Get Flow Information
+**GET** `/flow/<session_id>/info`
+
+Get detailed flow statistics and metadata.
+
+**Response:**
+```json
+{
+  "session_id": "a19f69d9-b1f8-4ada-a90e-aa5a5af20497",
+  "timestamp": 1691774123.45,
+  "flow_stats": {
+    "shape": [1276, 1702, 2],
+    "dtype": "float32",
+    "flow_x": {
+      "min": -289.95,
+      "max": 150.23,
+      "mean": 2.34,
+      "std": 12.45
+    },
+    "flow_y": {
+      "min": -45.67,
+      "max": 209.87,
+      "mean": -1.12,
+      "std": 8.91
+    },
+    "magnitude": {
+      "min": 0.0,
+      "max": 334.12,
+      "mean": 15.67,
+      "std": 18.23
+    },
+    "total_pixels": 2168552,
+    "size_bytes": 17348416
+  },
+  "image_info": {
+    "image1_dimensions": [1276, 1702],
+    "image2_dimensions": [1276, 1702],
+    "flow_dimensions": [1276, 1702],
+    "dimensions_match": true
+  },
+  "endpoints": {
+    "visualization": "/result/a19f69d9-b1f8-4ada-a90e-aa5a5af20497",
+    "raw_flow": "/flow/a19f69d9-b1f8-4ada-a90e-aa5a5af20497",
+    "flow_info": "/flow/a19f69d9-b1f8-4ada-a90e-aa5a5af20497/info"
+  }
+}
+```
+
+### 6. Cleanup Session
 **POST** `/cleanup/<session_id>`
 
 Remove the result from server memory (optional - results expire automatically).
@@ -82,6 +175,8 @@ Remove the result from server memory (optional - results expire automatically).
 
 ```python
 import requests
+import numpy as np
+import io
 
 # 1. Check server status
 response = requests.get('http://localhost:5000/status')
@@ -95,6 +190,61 @@ with open('image1.jpg', 'rb') as f1, open('image2.jpg', 'rb') as f2:
         'image2': ('img2.jpg', f2, 'image/jpeg')
     }
     response = requests.post('http://localhost:5000/upload', files=files)
+    result = response.json()
+
+    if result['success']:
+        session_id = result['session_id']
+        print(f"Flow computed in {result['computation_time']:.2f}s")
+        
+        # 3a. Download visualization
+        viz_response = requests.get(f'http://localhost:5000/result/{session_id}')
+        with open('flow_visualization.png', 'wb') as f:
+            f.write(viz_response.content)
+        
+        # 3b. Download raw flow data
+        flow_response = requests.get(f'http://localhost:5000/flow/{session_id}')
+        buffer = io.BytesIO(flow_response.content)
+        flow_array = np.load(buffer)
+        print(f"Raw flow shape: {flow_array.shape}")
+        
+        # 3c. Get detailed flow info
+        info_response = requests.get(f'http://localhost:5000/flow/{session_id}/info')
+        flow_info = info_response.json()
+        print(f"Flow magnitude range: {flow_info['flow_stats']['magnitude']['min']:.2f} to {flow_info['flow_stats']['magnitude']['max']:.2f}")
+        
+        # 4. Optional cleanup
+        requests.post(f'http://localhost:5000/cleanup/{session_id}')
+```
+
+### Using the FlowFormer API Client
+
+```python
+from flowformer_api import FlowFormerClient
+import numpy as np
+
+# Initialize client
+client = FlowFormerClient()
+if client.setup():
+    # Load images
+    with open('img1.jpg', 'rb') as f1, open('img2.jpg', 'rb') as f2:
+        img1_bytes = f1.read()
+        img2_bytes = f2.read()
+    
+    # Option 1: Get visualization
+    flow_viz = client.compute_flow(img1_bytes, img2_bytes)
+    with open('flow_viz.png', 'wb') as f:
+        f.write(flow_viz)
+    
+    # Option 2: Get raw flow data
+    raw_flow = client.compute_raw_flow(img1_bytes, img2_bytes)
+    print(f"Flow shape: {raw_flow.shape}")
+    print(f"Flow range: [{raw_flow.min():.2f}, {raw_flow.max():.2f}]")
+    
+    # Option 3: From numpy arrays
+    img1_array = np.array(Image.open('img1.jpg'))
+    img2_array = np.array(Image.open('img2.jpg'))
+    raw_flow = client.compute_raw_flow_from_arrays(img1_array, img2_array)
+```
     result = response.json()
 
 session_id = result['session_id']
