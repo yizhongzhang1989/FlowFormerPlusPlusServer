@@ -175,7 +175,7 @@ class FlowApp {
 
         // Set flow visualization image
         const flowImg = document.getElementById('flowVisualization');
-        flowImg.src = `/result/${result.result_filename}`;
+        flowImg.src = `/result/${result.session_id}`;
 
         // Update statistics
         document.getElementById('computationTime').textContent = result.computation_time;
@@ -209,7 +209,7 @@ class FlowApp {
         }
 
         // Store result filename for download
-        document.getElementById('downloadBtn').dataset.filename = result.result_filename;
+        document.getElementById('downloadBtn').dataset.filename = result.session_id;
     }
 
     downloadResult() {

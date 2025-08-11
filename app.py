@@ -57,14 +57,10 @@ model = None
 device = None
 
 app = Flask(__name__, template_folder='web/templates', static_folder='web/static')
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['RESULT_FOLDER'] = RESULT_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 app.config['SECRET_KEY'] = 'flowformer-plus-plus-server-2023'
 
-# Ensure directories exist
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(RESULT_FOLDER, exist_ok=True)
+# Note: No need to create directories in memory-only mode
 
 
 def allowed_file(filename):
@@ -91,38 +87,6 @@ def load_model():
     print("Model loaded successfully for web server!")
 
 
-def prepare_image(image_path, target_size=None, max_size=1024):
-    """Load and prepare image for flow computation"""
-    # Use the shared function from flow_utils
-    return flow_utils.prepare_single_image(image_path)
-
-
-def compute_flow(image1_path, image2_path):
-    """Compute optical flow between two images"""
-    global model, device
-    
-    # Use the shared function from flow_utils with web server configuration
-    return flow_utils.compute_flow_between_images(
-        image1_path, 
-        image2_path, 
-        model_path=CHECKPOINT_PATH,
-        device_config=config['model']['device'],
-        max_size=MAX_IMAGE_SIZE,
-        return_original_size=True,
-        use_cache=True  # Web server should cache the model
-    )
-
-
-def save_flow_visualization(flow, output_path):
-    """Save flow as color visualization"""
-    return flow_utils.save_flow_visualization(flow, output_path)
-
-
-def get_image_dimensions(image_path):
-    """Get original image dimensions"""
-    return flow_utils.get_image_dimensions(image_path)
-
-
 @app.route('/')
 def index():
     """Main page"""
@@ -131,7 +95,7 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
-    """Handle file upload and flow computation"""
+    """Handle file upload and flow computation (memory-only)"""
     try:
         # Check if files are in request
         if 'image1' not in request.files or 'image2' not in request.files:
@@ -148,22 +112,13 @@ def upload_files():
         if not (allowed_file(file1.filename) and allowed_file(file2.filename)):
             return jsonify({'error': 'Invalid file type. Allowed: png, jpg, jpeg, bmp, tiff'}), 400
         
-        # Generate unique session ID
-        session_id = str(uuid.uuid4())
+        # Read files into memory
+        img1_bytes = file1.read()
+        img2_bytes = file2.read()
         
-        # Save uploaded files
-        filename1 = f"{session_id}_img1.{file1.filename.rsplit('.', 1)[1].lower()}"
-        filename2 = f"{session_id}_img2.{file2.filename.rsplit('.', 1)[1].lower()}"
-        
-        filepath1 = os.path.join(app.config['UPLOAD_FOLDER'], filename1)
-        filepath2 = os.path.join(app.config['UPLOAD_FOLDER'], filename2)
-        
-        file1.save(filepath1)
-        file2.save(filepath2)
-        
-        # Get original image dimensions
-        img1_h, img1_w = get_image_dimensions(filepath1)
-        img2_h, img2_w = get_image_dimensions(filepath2)
+        # Get original image dimensions from bytes
+        img1_h, img1_w = flow_utils.get_image_dimensions_from_bytes(img1_bytes)
+        img2_h, img2_w = flow_utils.get_image_dimensions_from_bytes(img2_bytes)
         
         # Validate that input images have matching dimensions
         if img1_h != img2_h or img1_w != img2_w:
@@ -175,15 +130,47 @@ def upload_files():
                 'suggestion': 'Please resize both images to the same dimensions before uploading.'
             }), 400
         
-        # Compute optical flow
+        # Compute optical flow from bytes (no file I/O)
         start_time = time.time()
-        flow = compute_flow(filepath1, filepath2)
+        flow = flow_utils.compute_flow_from_bytes(
+            img1_bytes,
+            img2_bytes,
+            model_path=CHECKPOINT_PATH,
+            device_config=config['model']['device'],
+            max_size=MAX_IMAGE_SIZE,
+            use_cache=True
+        )
         computation_time = time.time() - start_time
         
-        # Save flow visualization
-        result_filename = f"{session_id}_flow.png"
-        result_path = os.path.join(app.config['RESULT_FOLDER'], result_filename)
-        save_flow_visualization(flow, result_path)
+        # Convert flow to image bytes (no file I/O)
+        result_bytes = flow_utils.flow_to_image_bytes(flow, format='PNG')
+        
+        # Generate unique session ID for caching the result in memory
+        session_id = str(uuid.uuid4())
+        
+        # Store result in memory cache (you could use Redis or similar for production)
+        if not hasattr(app, 'result_cache'):
+            app.result_cache = {}
+        
+        app.result_cache[session_id] = {
+            'result_bytes': result_bytes,
+            'timestamp': time.time(),
+            'flow_stats': {
+                'shape': flow.shape,
+                'min': float(flow.min()),
+                'max': float(flow.max()),
+                'mean': float(flow.mean()),
+                'std': float(flow.std())
+            }
+        }
+        
+        # Clean up old cache entries (keep only recent results)
+        current_time = time.time()
+        max_age = 3600  # 1 hour
+        expired_keys = [k for k, v in app.result_cache.items() 
+                       if current_time - v['timestamp'] > max_age]
+        for key in expired_keys:
+            del app.result_cache[key]
         
         # Get flow statistics
         flow_stats = {
@@ -205,40 +192,44 @@ def upload_files():
         return jsonify({
             'success': True,
             'session_id': session_id,
-            'result_filename': result_filename,
             'computation_time': round(computation_time, 2),
             'flow_stats': flow_stats,
-            'image_info': image_info
+            'image_info': image_info,
+            'note': 'Result stored in memory - use /result/<session_id> to download'
         })
         
     except Exception as e:
         print(f"Error processing upload: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'Error processing images: {str(e)}'}), 500
 
 
-@app.route('/result/<filename>')
-def get_result(filename):
-    """Serve result images"""
+@app.route('/result/<session_id>')
+def get_result(session_id):
+    """Serve result images from memory cache"""
     try:
-        result_path = os.path.join(app.config['RESULT_FOLDER'], filename)
-        if os.path.exists(result_path):
-            return send_file(result_path, mimetype='image/png')
-        else:
-            return jsonify({'error': 'Result not found'}), 404
+        # Check if we have the result in memory cache
+        if not hasattr(app, 'result_cache') or session_id not in app.result_cache:
+            return jsonify({'error': 'Result not found or expired'}), 404
+        
+        # Get result from cache
+        cached_result = app.result_cache[session_id]
+        result_bytes = cached_result['result_bytes']
+        
+        # Create response with image data
+        from flask import Response
+        return Response(
+            result_bytes,
+            mimetype='image/png',
+            headers={
+                'Content-Disposition': f'inline; filename=flow_result_{session_id}.png',
+                'Cache-Control': 'no-cache'
+            }
+        )
+        
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/upload/<filename>')
-def get_upload(filename):
-    """Serve uploaded images"""
-    try:
-        upload_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        if os.path.exists(upload_path):
-            return send_file(upload_path)
-        else:
-            return jsonify({'error': 'File not found'}), 404
-    except Exception as e:
+        print(f"Error serving result: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -249,52 +240,54 @@ def status():
         'status': 'running',
         'model_loaded': model is not None,
         'device': str(device) if device else 'unknown',
-        'upload_folder': app.config['UPLOAD_FOLDER'],
-        'result_folder': app.config['RESULT_FOLDER']
+        'memory_mode': True,
+        'cached_results': len(getattr(app, 'result_cache', {}))
     })
 
 
 @app.route('/cleanup/<session_id>', methods=['POST'])
 def cleanup_session(session_id):
-    """Clean up session files"""
+    """Clean up session from memory cache"""
     try:
-        # Remove uploaded files
-        for folder in [app.config['UPLOAD_FOLDER'], app.config['RESULT_FOLDER']]:
-            for file in os.listdir(folder):
-                if file.startswith(session_id):
-                    os.remove(os.path.join(folder, file))
-        
-        return jsonify({'success': True, 'message': 'Session cleaned up'})
+        if hasattr(app, 'result_cache') and session_id in app.result_cache:
+            del app.result_cache[session_id]
+            return jsonify({'success': True, 'message': 'Session cleaned up from memory'})
+        else:
+            return jsonify({'success': False, 'message': 'Session not found'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
-def cleanup_old_files(max_age_hours=24):
-    """Clean up old files periodically"""
+def cleanup_old_results(max_age_hours=1):
+    """Clean up old results from memory cache"""
+    if not hasattr(app, 'result_cache'):
+        return
+    
     max_age_seconds = max_age_hours * 3600
     current_time = time.time()
     
-    for folder in [app.config['UPLOAD_FOLDER'], app.config['RESULT_FOLDER']]:
-        for filename in os.listdir(folder):
-            filepath = os.path.join(folder, filename)
-            if os.path.isfile(filepath):
-                file_age = current_time - os.path.getmtime(filepath)
-                if file_age > max_age_seconds:
-                    try:
-                        os.remove(filepath)
-                        print(f"Cleaned up old file: {filename}")
-                    except Exception as e:
-                        print(f"Error cleaning up {filename}: {e}")
+    expired_keys = [k for k, v in app.result_cache.items() 
+                   if current_time - v['timestamp'] > max_age_seconds]
+    
+    for key in expired_keys:
+        del app.result_cache[key]
+        print(f"Cleaned up expired result: {key}")
+    
+    if expired_keys:
+        print(f"Cleaned up {len(expired_keys)} expired results from memory")
 
 
 if __name__ == '__main__':
-    print("Starting FlowFormer++ Web Server...")
+    print("Starting FlowFormer++ Web Server (Memory Mode)...")
     
     # Load model at startup
     load_model()
     
-    # Clean up old files
-    cleanup_old_files()
+    # Initialize result cache
+    app.result_cache = {}
+    
+    # Clean up old results from memory
+    cleanup_old_results()
     
     # Get server configuration
     server_config = config['server']
@@ -302,7 +295,7 @@ if __name__ == '__main__':
     port = server_config['port']
     debug = server_config['debug']
     
-    print("Server ready!")
+    print("Server ready! (Memory-only mode - no files saved to disk)")
     print(f"Access the web interface at: http://localhost:{port}")
     
     # Run Flask app

@@ -484,6 +484,169 @@ def save_visualization(flow, img1_path, output_dir='tmp'):
     return viz_fn
 
 
+# Memory-based functions for web server (no file I/O)
+def prepare_image_from_bytes(image_bytes, max_size=1024):
+    """Prepare image from bytes for flow computation (memory-only)
+    
+    Args:
+        image_bytes: Image data as bytes
+        max_size: Maximum size for adaptive sizing
+        
+    Returns:
+        tuple: (image_tensor, processed_size, original_size)
+    """
+    import io
+    from PIL import Image
+    
+    # Load image from bytes
+    image_pil = Image.open(io.BytesIO(image_bytes))
+    image = np.array(image_pil).astype(np.uint8)[..., :3]
+    
+    # Store original dimensions
+    original_h, original_w = image.shape[:2]
+    
+    # Use adaptive sizing
+    h, w = original_h, original_w
+    
+    # Scale down if image is too large
+    if max(h, w) > max_size:
+        scale = max_size / max(h, w)
+        h, w = int(h * scale), int(w * scale)
+    
+    # Ensure dimensions are divisible by 8
+    h = (h // 8) * 8
+    w = (w // 8) * 8
+    processed_size = (h, w)
+    
+    if h != original_h or w != original_w:
+        image = cv2.resize(image, (w, h), interpolation=cv2.INTER_CUBIC)
+    
+    # Convert to tensor
+    image_tensor = torch.from_numpy(image).permute(2, 0, 1).float()
+    return image_tensor, processed_size, (original_h, original_w)
+
+
+def get_image_dimensions_from_bytes(image_bytes):
+    """Get image dimensions from bytes
+    
+    Args:
+        image_bytes: Image data as bytes
+        
+    Returns:
+        tuple: (height, width) of the image
+    """
+    import io
+    from PIL import Image
+    
+    image_pil = Image.open(io.BytesIO(image_bytes))
+    return image_pil.size[::-1]  # PIL returns (width, height), we want (height, width)
+
+
+def compute_flow_from_bytes(img1_bytes, img2_bytes, model_path=None, device_config="auto", 
+                           max_size=1024, use_cache=True):
+    """Compute flow from image bytes (memory-only)
+    
+    Args:
+        img1_bytes: First image as bytes
+        img2_bytes: Second image as bytes
+        model_path: Path to model checkpoint
+        device_config: Device configuration
+        max_size: Maximum image size for processing
+        use_cache: Whether to cache the model
+        
+    Returns:
+        numpy array: Flow field resized to original image size
+    """
+    # Build model
+    model, device = build_model(model_path, device_config, use_cache=use_cache)
+    
+    # Prepare images from bytes
+    image1, proc_size1, orig_size1 = prepare_image_from_bytes(img1_bytes, max_size)
+    image2, proc_size2, orig_size2 = prepare_image_from_bytes(img2_bytes, max_size)
+    
+    # Ensure processed images have the same size for flow computation
+    if proc_size1 != proc_size2:
+        # Resize to common size (use the smaller dimensions to preserve detail)
+        common_h = min(proc_size1[0], proc_size2[0])
+        common_w = min(proc_size1[1], proc_size2[1])
+        
+        # Ensure dimensions are divisible by 8
+        common_h = (common_h // 8) * 8
+        common_w = (common_w // 8) * 8
+        
+        image1 = torch.nn.functional.interpolate(
+            image1.unsqueeze(0), 
+            size=(common_h, common_w), 
+            mode='bilinear', 
+            align_corners=False
+        ).squeeze(0)
+        
+        image2 = torch.nn.functional.interpolate(
+            image2.unsqueeze(0), 
+            size=(common_h, common_w), 
+            mode='bilinear', 
+            align_corners=False
+        ).squeeze(0)
+        
+        proc_size = (common_h, common_w)
+    else:
+        proc_size = proc_size1
+    
+    # Compute flow using the model
+    with torch.no_grad():
+        flow = compute_flow_with_model(model, device, image1, image2, use_tiling=False)
+    
+    # Clean up GPU memory if not caching model
+    if not use_cache and device.type == 'cuda':
+        torch.cuda.empty_cache()
+    
+    # Resize flow back to original image dimensions
+    target_output_size = orig_size1  # Use first image's original size
+    if proc_size != target_output_size:
+        # Calculate scaling factors
+        scale_h = target_output_size[0] / proc_size[0]
+        scale_w = target_output_size[1] / proc_size[1]
+        
+        # Resize flow field
+        flow_resized = cv2.resize(flow, (target_output_size[1], target_output_size[0]), 
+                                  interpolation=cv2.INTER_LINEAR)
+        
+        # Scale flow vectors according to the resize ratio
+        flow_resized[:, :, 0] *= scale_w  # x-component
+        flow_resized[:, :, 1] *= scale_h  # y-component
+        
+        flow = flow_resized
+    
+    return flow
+
+
+def flow_to_image_bytes(flow, format='PNG'):
+    """Convert flow to image bytes (memory-only)
+    
+    Args:
+        flow: Flow field as numpy array
+        format: Image format ('PNG', 'JPEG', etc.)
+        
+    Returns:
+        bytes: Image data as bytes
+    """
+    import io
+    from PIL import Image
+    
+    # Convert flow to color image
+    flow_img = flow_viz.flow_to_image(flow)
+    
+    # Convert to PIL Image (flow_viz returns RGB)
+    flow_pil = Image.fromarray(flow_img.astype(np.uint8))
+    
+    # Save to bytes buffer
+    img_buffer = io.BytesIO()
+    flow_pil.save(img_buffer, format=format)
+    img_buffer.seek(0)
+    
+    return img_buffer.getvalue()
+
+
 def main():
     parser = argparse.ArgumentParser(description='Visualize optical flow between two images')
     parser.add_argument('--img1', type=str, default='sample_data/img1.jpg', 
