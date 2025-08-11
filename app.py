@@ -19,12 +19,8 @@ import cv2
 # Add core to path
 sys.path.append('core')
 
-# Import FlowFormer++ modules
-from configs.submissions import get_cfg
-from core.FlowFormer import build_flowformer
-from core.utils import flow_viz, frame_utils
-from core.utils.utils import InputPadder
-import torch.nn.functional as F
+# Import FlowFormer++ modules from visualize_flow_img_pair to avoid duplication
+import visualize_flow_img_pair as flow_utils
 
 # Load configuration from config.json
 def load_config():
@@ -81,156 +77,50 @@ def load_model():
     global model, device
     
     print("Loading FlowFormer++ model...")
-    cfg = get_cfg()
-    cfg.model = CHECKPOINT_PATH
     
     # Determine device based on config
     device_config = config['model']['device']
-    if device_config == "auto":
-        # Auto-detect device
-        if torch.cuda.is_available():
-            device = torch.device('cuda')
-            print(f"Using GPU: {torch.cuda.get_device_name()}")
-        else:
-            device = torch.device('cpu')
-            print("Using CPU")
-    else:
-        # Use specified device
-        device = torch.device(device_config)
-        print(f"Using device: {device}")
     
-    # Build and load model
-    model = torch.nn.DataParallel(build_flowformer(cfg))
+    # Build model using the shared function
+    model, device = flow_utils.build_model(
+        model_path=CHECKPOINT_PATH,
+        device_config=device_config,
+        use_cache=True  # Cache for web server
+    )
     
-    try:
-        model.load_state_dict(torch.load(cfg.model, map_location=device, weights_only=True))
-        model.to(device)
-        model.eval()
-        print("Model loaded successfully!")
-    except Exception as e:
-        print(f"Error loading model: {e}")
-        raise
+    print("Model loaded successfully for web server!")
 
 
 def prepare_image(image_path, target_size=None, max_size=1024):
     """Load and prepare image for flow computation"""
-    image = frame_utils.read_gen(image_path)
-    image = np.array(image).astype(np.uint8)[..., :3]
-    
-    # Store original dimensions
-    original_h, original_w = image.shape[:2]
-    
-    # If no target size specified, use adaptive sizing based on max_size
-    if target_size is None:
-        h, w = original_h, original_w
-        
-        # Scale down if image is too large
-        if max(h, w) > max_size:
-            scale = max_size / max(h, w)
-            h, w = int(h * scale), int(w * scale)
-        
-        # Ensure dimensions are divisible by 8 (common requirement for optical flow models)
-        h = (h // 8) * 8
-        w = (w // 8) * 8
-        
-        if h != original_h or w != original_w:
-            image = cv2.resize(image, (w, h), interpolation=cv2.INTER_CUBIC)
-    else:
-        # Use specified target size
-        h, w = target_size
-        image = cv2.resize(image, (w, h), interpolation=cv2.INTER_CUBIC)
-    
-    # Convert to tensor
-    image_tensor = torch.from_numpy(image).permute(2, 0, 1).float()
-    return image_tensor, (h, w), (original_h, original_w)
+    # Use the shared function from flow_utils
+    return flow_utils.prepare_single_image(image_path)
 
 
 def compute_flow(image1_path, image2_path):
     """Compute optical flow between two images"""
     global model, device
     
-    # Load and prepare images
-    img1_tensor, img1_proc_size, img1_orig_size = prepare_image(image1_path, max_size=MAX_IMAGE_SIZE)
-    img2_tensor, img2_proc_size, img2_orig_size = prepare_image(image2_path, max_size=MAX_IMAGE_SIZE)
-    
-    # Use the original size of the first image as target output size
-    target_output_size = img1_orig_size
-    
-    # Ensure processed images have the same size for flow computation
-    if img1_proc_size != img2_proc_size:
-        # Resize to common size (use the smaller dimensions to preserve detail)
-        common_h = min(img1_proc_size[0], img2_proc_size[0])
-        common_w = min(img1_proc_size[1], img2_proc_size[1])
-        
-        # Ensure dimensions are divisible by 8
-        common_h = (common_h // 8) * 8
-        common_w = (common_w // 8) * 8
-        
-        img1_tensor = F.interpolate(
-            img1_tensor.unsqueeze(0), 
-            size=(common_h, common_w), 
-            mode='bilinear', 
-            align_corners=False
-        ).squeeze(0)
-        
-        img2_tensor = F.interpolate(
-            img2_tensor.unsqueeze(0), 
-            size=(common_h, common_w), 
-            mode='bilinear', 
-            align_corners=False
-        ).squeeze(0)
-        
-        proc_size = (common_h, common_w)
-    else:
-        proc_size = img1_proc_size
-    
-    # Move to device and add batch dimension
-    img1_tensor = img1_tensor.unsqueeze(0).to(device)
-    img2_tensor = img2_tensor.unsqueeze(0).to(device)
-    
-    # Compute flow
-    with torch.no_grad():
-        padder = InputPadder(img1_tensor.shape)
-        img1_padded, img2_padded = padder.pad(img1_tensor, img2_tensor)
-        
-        flow_pred, _ = model(img1_padded, img2_padded)
-        flow_pred = padder.unpad(flow_pred)
-        
-        # Convert to numpy
-        flow = flow_pred[0].permute(1, 2, 0).cpu().numpy()
-    
-    # Resize flow back to original image dimensions
-    if proc_size != target_output_size:
-        # Calculate scaling factors
-        scale_h = target_output_size[0] / proc_size[0]
-        scale_w = target_output_size[1] / proc_size[1]
-        
-        # Resize flow field
-        flow_resized = cv2.resize(flow, (target_output_size[1], target_output_size[0]), 
-                                  interpolation=cv2.INTER_LINEAR)
-        
-        # Scale flow vectors according to the resize ratio
-        flow_resized[:, :, 0] *= scale_w  # x-component
-        flow_resized[:, :, 1] *= scale_h  # y-component
-        
-        flow = flow_resized
-    
-    return flow
+    # Use the shared function from flow_utils with web server configuration
+    return flow_utils.compute_flow_between_images(
+        image1_path, 
+        image2_path, 
+        model_path=CHECKPOINT_PATH,
+        device_config=config['model']['device'],
+        max_size=MAX_IMAGE_SIZE,
+        return_original_size=True,
+        use_cache=True  # Web server should cache the model
+    )
 
 
 def save_flow_visualization(flow, output_path):
     """Save flow as color visualization"""
-    flow_img = flow_viz.flow_to_image(flow)
-    cv2.imwrite(output_path, flow_img[:, :, [2, 1, 0]])  # RGB to BGR for OpenCV
-    return output_path
+    return flow_utils.save_flow_visualization(flow, output_path)
 
 
 def get_image_dimensions(image_path):
     """Get original image dimensions"""
-    image = frame_utils.read_gen(image_path)
-    image = np.array(image).astype(np.uint8)[..., :3]
-    h, w = image.shape[:2]
-    return h, w
+    return flow_utils.get_image_dimensions(image_path)
 
 
 @app.route('/')
