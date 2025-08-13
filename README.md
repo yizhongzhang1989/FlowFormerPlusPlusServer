@@ -108,13 +108,16 @@ if client.setup():
     print(f"Flow shape: {raw_flow.shape}")
 ```
 
-#### Convenience Functions
+#### File-based Processing
 ```python
-from flowformer_api import compute_flow_from_files, compute_raw_flow_from_files
+from flowformer_api import FlowFormerClient
 
-# Direct file processing
-flow_image = compute_flow_from_files('img1.jpg', 'img2.jpg')
-raw_flow = compute_raw_flow_from_files('img1.jpg', 'img2.jpg')
+# Initialize client and process files
+client = FlowFormerClient()
+if client.setup():
+    # Direct file processing
+    flow_image = client.compute_flow_from_files('img1.jpg', 'img2.jpg')
+    raw_flow = client.compute_raw_flow_from_files('img1.jpg', 'img2.jpg')
 ```
 
 #### Example Script
