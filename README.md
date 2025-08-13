@@ -89,42 +89,70 @@ curl http://localhost:5000/flow/SESSION_ID -o flow_data.npy
 #### Simple Usage
 ```python
 from flowformer_api import FlowFormerClient
+import numpy as np
+from PIL import Image
 
 # Initialize client
 client = FlowFormerClient()
 if client.setup():
-    # Load images
-    with open('img1.jpg', 'rb') as f1, open('img2.jpg', 'rb') as f2:
-        img1_bytes = f1.read()
-        img2_bytes = f2.read()
+    # Load images as numpy arrays
+    img1 = np.array(Image.open('img1.jpg'))
+    img2 = np.array(Image.open('img2.jpg'))
     
-    # Get flow visualization
-    flow_viz = client.compute_flow(img1_bytes, img2_bytes)
-    with open('flow_viz.png', 'wb') as f:
-        f.write(flow_viz)
+    # Compute raw optical flow
+    flow = client.compute_flow(img1, img2)  # Returns (H, W, 2) numpy array
+    print(f"Flow shape: {flow.shape}")
     
-    # Get raw flow data
-    raw_flow = client.compute_raw_flow(img1_bytes, img2_bytes)
-    print(f"Flow shape: {raw_flow.shape}")
+    # Create flow visualization
+    flow_vis = client.visualize_flow(flow)  # Returns (H, W, 3) RGB image
+    Image.fromarray(flow_vis).save('flow_visualization.png')
 ```
 
-#### File-based Processing
+#### Complete Example
 ```python
 from flowformer_api import FlowFormerClient
+import numpy as np
+from PIL import Image
 
-# Initialize client and process files
+# Initialize and test connection
 client = FlowFormerClient()
-if client.setup():
-    # Direct file processing
-    flow_image = client.compute_flow_from_files('img1.jpg', 'img2.jpg')
-    raw_flow = client.compute_raw_flow_from_files('img1.jpg', 'img2.jpg')
+if not client.setup():
+    print("Server not available")
+    exit(1)
+
+# Load sample images
+img1 = np.array(Image.open('sample_data/img1.jpg'))
+img2 = np.array(Image.open('sample_data/img2.jpg'))
+
+# Compute optical flow (returns raw flow field)
+flow = client.compute_flow(img1, img2)
+
+# Visualize flow (returns RGB visualization)
+flow_visualization = client.visualize_flow(flow)
+
+# Save results
+Image.fromarray(flow_visualization).save('tmp/flow_output.png')
+np.save('tmp/flow_data.npy', flow)
 ```
 
-#### Example Script
-```bash
-# Run the included example
-python api_example.py
+#### API Methods
+- **`compute_flow(img1, img2)`**: Takes two numpy arrays (H,W,3), returns raw flow (H,W,2)
+- **`visualize_flow(flow)`**: Takes flow array (H,W,2), returns RGB visualization (H,W,3)
+- **`setup()`**: Test server connection and readiness
 ```
+
+#### Run Example
+```bash
+# Run the working example (requires server running)
+python flowformer_api.py
+```
+
+This example will:
+- Test server connection
+- Load sample images from `sample_data/`
+- Compute optical flow
+- Create visualization
+- Save results to `tmp/` directory
 
 ### API Response Format
 ```json
@@ -380,8 +408,7 @@ python3 -c "import json; c=json.load(open('config.json')); print(f'Port: {c[\"se
 ### Project Structure
 ```
 ├── app.py                          # Main Flask application
-├── flowformer_api.py              # Python API client library
-├── api_example.py                 # API usage example
+├── flowformer_api.py              # Python API client library with example
 ├── visualize_flow_img_pair.py     # Core flow computation module
 ├── config.json                    # Server configuration
 ├── setup_server.sh               # One-command setup script
