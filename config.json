@@ -1,0 +1,23 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "debug": false
+  },
+  "model": {
+    "checkpoint_path": "checkpoints/sintel.pth",
+    "device": "auto",
+    "max_image_size": 1024
+  },
+  "upload": {
+    "max_file_size_mb": 10,
+    "allowed_extensions": ["png", "jpg", "jpeg", "bmp", "tiff"],
+    "upload_folder": "tmp/uploads",
+    "results_folder": "tmp/results"
+  },
+  "processing": {
+    "auto_cleanup": true,
+    "cleanup_interval_hours": 24,
+    "max_stored_results": 100
+  }
+}
