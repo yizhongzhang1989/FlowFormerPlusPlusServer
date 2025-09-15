@@ -11,8 +11,16 @@
 ## Quick Start
 
 ### 🚀 One-Command Setup
+
 ```bash
+# Linux/macOS
 ./setup_server.sh
+
+# Windows (PowerShell - Recommended)
+.\setup_server.ps1
+
+# Windows (Command Prompt)
+setup_server.bat
 ```
 
 This single command will:
@@ -23,19 +31,76 @@ This single command will:
 ⚠️ **Note**: The setup script starts the web server and keeps it running. Open your browser to http://localhost:5000 to use the interface.
 
 ### 🔄 Restart Server (After Initial Setup)
+
 ```bash
+# Linux/macOS
 ./restart_server.sh
+
+# Windows (PowerShell - Recommended)
+.\restart_server.ps1
+
+# Windows (Command Prompt)
+restart_server.bat
 ```
 
 ## Table of Contents
-1. [Web Server Interface](#web-server-interface)
-2. [API Access](#api-access)
-3. [Training and Evaluation](#training-and-evaluation)
-4. [Configuration](#configuration)
-5. [Command Line Tools](#command-line-tools)
-6. [Data Preparation](#data-preparation)
-7. [Troubleshooting](#troubleshooting)
-8. [Citation](#citation)
+1. [Cross-Platform Support](#cross-platform-support)
+2. [Web Server Interface](#web-server-interface)
+3. [API Access](#api-access)
+4. [Training and Evaluation](#training-and-evaluation)
+5. [Configuration](#configuration)
+6. [Command Line Tools](#command-line-tools)
+7. [Data Preparation](#data-preparation)
+8. [Troubleshooting](#troubleshooting)
+9. [Citation](#citation)
+
+## Cross-Platform Support
+
+### Windows Users
+
+This project fully supports Windows with both **PowerShell** and **Command Prompt** scripts:
+
+#### PowerShell (Recommended)
+- **Modern syntax** and better error handling
+- **Colored output** for better readability
+- **Enhanced functionality** and cross-platform compatibility
+- **Usage**: Run scripts with `.\script_name.ps1`
+
+#### Command Prompt (Batch)
+- **Traditional Windows** batch file support
+- **Basic functionality** for all setup operations
+- **Fallback option** if PowerShell is restricted
+- **Usage**: Run scripts with `script_name.bat`
+
+#### Prerequisites for Windows
+- **Anaconda/Miniconda**: Required for Python environment management
+- **Git**: For cloning the repository (if applicable)
+- **PowerShell 5.0+**: Recommended (usually pre-installed on Windows 10/11)
+
+#### Windows-Specific Notes
+- Run scripts from the project root directory
+- Ensure execution policy allows script running: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+- All paths use Windows-style backslashes in scripts
+- Conda activation handled automatically by scripts
+
+### Script Correspondence
+| Function | Linux/macOS | Windows PowerShell | Windows Batch |
+|----------|-------------|-------------------|---------------|
+| **Initial Setup** | `./setup_server.sh` | `.\setup_server.ps1` | `setup_server.bat` |
+| **Restart Server** | `./restart_server.sh` | `.\restart_server.ps1` | `restart_server.bat` |
+
+### Getting Help
+All scripts support help options:
+```powershell
+# PowerShell
+.\setup_server.ps1 -Help
+.\restart_server.ps1 -Help
+```
+
+```cmd
+# Batch files show usage when run without parameters
+setup_server.bat /?
+```
 
 ## Web Server Interface
 

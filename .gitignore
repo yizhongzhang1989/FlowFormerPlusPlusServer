@@ -2,3 +2,4 @@ checkpoints/
 tmp/
 
 *.pyc
+.vscode/
