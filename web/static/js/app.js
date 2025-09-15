@@ -40,26 +40,26 @@ class FlowApp {
             const dimIndicatorId = previewId.replace('preview', 'dimensions');
             const dimIndicator = document.getElementById(dimIndicatorId);
             
-            reader.onload = function(e) {
+            reader.onload = (e) => {
                 preview.src = e.target.result;
                 preview.style.display = 'block';
                 
                 // Create a temporary image to get dimensions
                 const tempImg = new Image();
-                tempImg.onload = function() {
+                tempImg.onload = () => {
                     if (dimIndicator) {
                         const dimensionSpan = dimIndicator.querySelector('.fw-bold');
                         if (dimensionSpan) {
-                            dimensionSpan.textContent = `${this.width} × ${this.height}`;
+                            dimensionSpan.textContent = `${tempImg.width} × ${tempImg.height}`;
                         }
                         dimIndicator.style.display = 'block';
                     }
                     
                     // Check dimension compatibility
                     this.checkDimensionCompatibility();
-                }.bind(this);
+                };
                 tempImg.src = e.target.result;
-            }.bind(this);
+            };
             
             reader.readAsDataURL(input.files[0]);
         }
@@ -180,11 +180,11 @@ class FlowApp {
         // Update statistics
         document.getElementById('computationTime').textContent = result.computation_time;
         document.getElementById('flowRange').textContent = 
-            `${result.flow_stats.min.toFixed(2)} / ${result.flow_stats.max.toFixed(2)}`;
+            `${result.flow_stats.magnitude.min.toFixed(2)} / ${result.flow_stats.magnitude.max.toFixed(2)}`;
         document.getElementById('flowShape').textContent = 
             `${result.flow_stats.shape[0]} × ${result.flow_stats.shape[1]}`;
-        document.getElementById('flowMean').textContent = result.flow_stats.mean.toFixed(3);
-        document.getElementById('flowStd').textContent = result.flow_stats.std.toFixed(3);
+        document.getElementById('flowMean').textContent = result.flow_stats.magnitude.mean.toFixed(3);
+        document.getElementById('flowStd').textContent = result.flow_stats.magnitude.std.toFixed(3);
 
         // Update dimension information if available
         if (result.image_info) {
