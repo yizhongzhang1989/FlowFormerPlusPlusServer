@@ -12,18 +12,14 @@
 
 ### 🚀 One-Command Setup
 
-#### Linux/macOS
 ```bash
+# Linux/macOS
 ./setup_server.sh
-```
 
-#### Windows (PowerShell - Recommended)
-```powershell
+# Windows (PowerShell - Recommended)
 .\setup_server.ps1
-```
 
-#### Windows (Command Prompt)
-```cmd
+# Windows (Command Prompt)
 setup_server.bat
 ```
 
@@ -36,18 +32,14 @@ This single command will:
 
 ### 🔄 Restart Server (After Initial Setup)
 
-#### Linux/macOS
 ```bash
+# Linux/macOS
 ./restart_server.sh
-```
 
-#### Windows (PowerShell - Recommended)
-```powershell
+# Windows (PowerShell - Recommended)
 .\restart_server.ps1
-```
 
-#### Windows (Command Prompt)
-```cmd
+# Windows (Command Prompt)
 restart_server.bat
 ```
 
