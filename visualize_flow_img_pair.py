@@ -72,7 +72,7 @@ def compute_weight(hws, image_shape, patch_size=TRAIN_SIZE, sigma=1.0, wtype='ga
     return patch_weights
 
 
-def compute_flow_with_model(model, device, image1, image2, use_tiling=False):
+def compute_flow_with_model(model, device, image1, image2, use_tiling=False, verbose=False):
     """Compute optical flow using provided model and device
     
     Args:
@@ -85,7 +85,8 @@ def compute_flow_with_model(model, device, image1, image2, use_tiling=False):
     Returns:
         numpy array: Flow field
     """
-    print(f"Computing optical flow on {device}...")
+    if verbose:
+        print(f"Computing optical flow on {device}...")
 
     image_size = image1.shape[1:]
     image1, image2 = image1[None].to(device), image2[None].to(device)
@@ -133,7 +134,7 @@ def compute_flow_with_model(model, device, image1, image2, use_tiling=False):
 
 
 def compute_flow_between_images(img1_path, img2_path, model_path=None, device_config="auto", 
-                               max_size=None, use_tiling=False, return_original_size=False, use_cache=False):
+                               max_size=None, use_tiling=False, return_original_size=False, use_cache=False, verbose=True):
     """High-level function to compute flow between two images with automatic backscaling
     
     Args:
@@ -145,12 +146,13 @@ def compute_flow_between_images(img1_path, img2_path, model_path=None, device_co
         use_tiling: Whether to use tiling
         return_original_size: Whether to resize flow back to original image size
         use_cache: Whether to cache the model (True for web server, False for CLI)
+        verbose: Whether to print status messages
         
     Returns:
         numpy array: Flow field (resized to original size if return_original_size=True)
     """
     # Build model
-    model, device = build_model(model_path, device_config, use_cache=use_cache)
+    model, device = build_model(model_path, device_config, use_cache=use_cache, verbose=verbose)
     
     # Load and prepare images
     if max_size is not None:
@@ -320,13 +322,14 @@ def prepare_single_image(image_path, target_size=None, max_size=1024):
     return image_tensor, (h, w), (original_h, original_w)
 
 
-def build_model(model_path=None, device_config="auto", use_cache=False):
+def build_model(model_path=None, device_config="auto", use_cache=False, verbose=True):
     """Build and load FlowFormer++ model
     
     Args:
         model_path: Path to model checkpoint
         device_config: Device configuration ("auto", "cuda", "cpu", or torch.device)
         use_cache: Whether to cache the model for reuse (useful for web server)
+        verbose: Whether to print status messages
         
     Returns:
         tuple: (model, device)
@@ -335,10 +338,12 @@ def build_model(model_path=None, device_config="auto", use_cache=False):
     
     # Check cache first
     if use_cache and _cached_model is not None:
-        print("Using cached model...")
+        if verbose:
+            print("Using cached model...")
         return _cached_model, _cached_device
     
-    print("Building FlowFormer++ model...")
+    if verbose:
+        print("Building FlowFormer++ model...")
     cfg = get_cfg()
     
     # Use provided model path or default to sintel checkpoint
@@ -348,7 +353,8 @@ def build_model(model_path=None, device_config="auto", use_cache=False):
     # Override the config model path
     cfg.model = model_path
     
-    print(f"Loading model from: {model_path}")
+    if verbose:
+        print(f"Loading model from: {model_path}")
     
     # Determine device
     if isinstance(device_config, torch.device):
@@ -356,24 +362,28 @@ def build_model(model_path=None, device_config="auto", use_cache=False):
     elif device_config == "auto":
         if torch.cuda.is_available():
             device = torch.device('cuda')
-            print(f"Using GPU: {torch.cuda.get_device_name()}")
+            if verbose:
+                print(f"Using GPU: {torch.cuda.get_device_name()}")
         else:
             device = torch.device('cpu')
-            print("Using CPU")
+            if verbose:
+                print("Using CPU")
     else:
         device = torch.device(device_config)
-        print(f"Using device: {device}")
+        if verbose:
+            print(f"Using device: {device}")
     
     model = torch.nn.DataParallel(build_flowformer(cfg))
     
     # Check if model file exists
     if not os.path.exists(model_path):
-        print(f"Error: Model file {model_path} not found!")
-        print("Available models in checkpoints/:")
-        if os.path.exists("checkpoints"):
-            for f in os.listdir("checkpoints"):
-                if f.endswith(".pth"):
-                    print(f"  - {f}")
+        if verbose:
+            print(f"Error: Model file {model_path} not found!")
+            print("Available models in checkpoints/:")
+            if os.path.exists("checkpoints"):
+                for f in os.listdir("checkpoints"):
+                    if f.endswith(".pth"):
+                        print(f"  - {f}")
         raise FileNotFoundError(f"Model file {model_path} not found")
     
     # Load model with error handling for CUDA compatibility
@@ -385,13 +395,16 @@ def build_model(model_path=None, device_config="auto", use_cache=False):
             model.load_state_dict(torch.load(model_path, map_location='cpu', weights_only=True))
             model.to(device)
     except Exception as e:
-        print(f"Warning: Failed to load model on {device}: {e}")
+        if verbose:
+            print(f"Warning: Failed to load model on {device}: {e}")
         if device.type == 'cuda':
-            print("Trying to load on CPU...")
+            if verbose:
+                print("Trying to load on CPU...")
             device = torch.device('cpu')
             model.load_state_dict(torch.load(model_path, map_location='cpu', weights_only=True))
             model.to(device)
-            print("Model loaded on CPU. GPU acceleration disabled.")
+            if verbose:
+                print("Model loaded on CPU. GPU acceleration disabled.")
         else:
             raise
     
@@ -401,7 +414,8 @@ def build_model(model_path=None, device_config="auto", use_cache=False):
     if use_cache:
         _cached_model = model
         _cached_device = device
-        print("Model cached for future use")
+        if verbose:
+            print("Model cached for future use")
     
     return model, device
 
@@ -543,7 +557,7 @@ def get_image_dimensions_from_bytes(image_bytes):
 
 
 def compute_flow_from_bytes(img1_bytes, img2_bytes, model_path=None, device_config="auto", 
-                           max_size=1024, use_cache=True):
+                           max_size=1024, use_cache=True, verbose=False):
     """Compute flow from image bytes (memory-only)
     
     Args:
@@ -553,12 +567,13 @@ def compute_flow_from_bytes(img1_bytes, img2_bytes, model_path=None, device_conf
         device_config: Device configuration
         max_size: Maximum image size for processing
         use_cache: Whether to cache the model
+        verbose: Whether to print status messages
         
     Returns:
         numpy array: Flow field resized to original image size
     """
     # Build model
-    model, device = build_model(model_path, device_config, use_cache=use_cache)
+    model, device = build_model(model_path, device_config, use_cache=use_cache, verbose=verbose)
     
     # Prepare images from bytes
     image1, proc_size1, orig_size1 = prepare_image_from_bytes(img1_bytes, max_size)
